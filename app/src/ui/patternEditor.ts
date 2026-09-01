@@ -321,7 +321,12 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
 		const list = document.createElement("div");
 		list.style.marginTop = "14px";
 		list.appendChild(makeEl("div", "label", "Segments added this session"));
-		for (const name of existingCustom) list.appendChild(makeEl("div", "hint", `&bull; ${name}`));
+		for (const name of existingCustom) {
+			const item = document.createElement("div");
+			item.className = "hint";
+			item.textContent = `• ${name}`;
+			list.appendChild(item);
+		}
 		el.appendChild(list);
 	}
 }
@@ -416,7 +421,9 @@ function makeEl(tag: string, className: string, html: string): HTMLElement {
 }
 
 function escapeAttr(s: string): string {
-	return s.replace(/"/g, "&quot;");
+	// Full entity escape (not just `"`) so a draft field value cannot break
+	// out of the attribute or inject markup, regardless of quoting context.
+	return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 const CELL_COLORS: Record<string, string> = {

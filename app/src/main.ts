@@ -110,7 +110,15 @@ function renderLibraryList() {
 	for (const entry of items) {
 		const div = document.createElement("div");
 		div.className = "library-item" + (current?.id === entry.id ? " active" : "");
-		div.innerHTML = `<div>${entry.title}</div><div class="cat">${entry.category}${entry.base ? " &middot; inherits " + entry.base : ""}</div>`;
+		// entry.title/category/base are parsed straight out of component Lua
+		// source -- build with textContent so a crafted string can't inject
+		// markup into the library list.
+		const titleDiv = document.createElement("div");
+		titleDiv.textContent = entry.title;
+		const catDiv = document.createElement("div");
+		catDiv.className = "cat";
+		catDiv.textContent = entry.base ? `${entry.category} · inherits ${entry.base}` : entry.category;
+		div.append(titleDiv, catDiv);
 		div.onclick = () => selectLibraryComponent(entry.id);
 		el.appendChild(div);
 	}
@@ -252,9 +260,12 @@ function renderDashboard(el: HTMLElement) {
 			const row = document.createElement("div");
 			row.style.fontSize = "12px";
 			row.style.marginBottom = "3px";
-			row.innerHTML = mode
-				? `<span style="color:var(--good);">&#9654; ${channel} &rarr; ${mode}</span>`
-				: `<span style="color:var(--text-dim);">${channel}: inactive</span>`;
+			// channel and mode originate from COMPONENT.VirtualOutputs -- set as
+			// text, not interpolated HTML.
+			const span = document.createElement("span");
+			span.style.color = mode ? "var(--good)" : "var(--text-dim)";
+			span.textContent = mode ? `▶ ${channel} → ${mode}` : `${channel}: inactive`;
+			row.appendChild(span);
 			group.appendChild(row);
 		}
 		el.appendChild(group);
@@ -267,10 +278,18 @@ function renderSegments(el: HTMLElement) {
 		const row = document.createElement("div");
 		row.className = "segment-row";
 		const active = info[seg.name];
-		row.innerHTML = `<div class="name">${seg.name}</div>
-      <div class="${active ? "active-seq" : "idle"}">${
-				active ? `&#9654; ${active.channel}${active.mode ? ":" + active.mode : ""} &rarr; ${active.sequence}` : "idle" + (seg.off === "PASS" ? " (pass-through)" : "")
-			}</div>`;
+		// seg.name, and the channel/mode/sequence names in `active`, all come
+		// from user-editable component data (Code Editor, Pattern Editor) --
+		// build these nodes with textContent so none of it is parsed as HTML.
+		const nameDiv = document.createElement("div");
+		nameDiv.className = "name";
+		nameDiv.textContent = seg.name;
+		const detailDiv = document.createElement("div");
+		detailDiv.className = active ? "active-seq" : "idle";
+		detailDiv.textContent = active
+			? `▶ ${active.channel}${active.mode ? ":" + active.mode : ""} → ${active.sequence}`
+			: "idle" + (seg.off === "PASS" ? " (pass-through)" : "");
+		row.append(nameDiv, detailDiv);
 		const chipRow = document.createElement("div");
 		chipRow.className = "seq-chip-row";
 		for (const seqName of Object.keys(seg.sequences)) {
