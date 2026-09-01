@@ -115,19 +115,19 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
     you can also add brand-new light elements (useful when building a lightbar from scratch).</div>`;
 	el.appendChild(addElWrap);
 
-	if (component.elements.filter((e) => e.isVisual).length === 0 || true) {
-		const addBox = document.createElement("div");
-		addBox.className = "row wrap";
-		addBox.style.marginBottom = "10px";
-		addBox.innerHTML = `
+	// New elements can always be added -- both to a from-scratch lightbar and
+	// alongside an existing one's elements.
+	const addBox = document.createElement("div");
+	addBox.className = "row wrap";
+	addBox.style.marginBottom = "10px";
+	addBox.innerHTML = `
       <button id="add-element-btn">+ Add light element</button>
     `;
-		el.appendChild(addBox);
-		addBox.querySelector("#add-element-btn")!.addEventListener("click", () => {
-			draft.newElements.push({ tempId: tempIdCounter++, x: 0, y: draft.newElements.length * 10, z: 5, yaw: 0, width: 4, height: 4 });
-			rerender();
-		});
-	}
+	el.appendChild(addBox);
+	addBox.querySelector("#add-element-btn")!.addEventListener("click", () => {
+		draft.newElements.push({ tempId: tempIdCounter++, x: 0, y: draft.newElements.length * 10, z: 5, yaw: 0, width: 4, height: 4 });
+		rerender();
+	});
 
 	if (draft.newElements.length) {
 		const list = document.createElement("div");
@@ -345,18 +345,14 @@ function commitDraft(component: CompiledComponent, draft: Draft, rows: Row[]): C
 	const elementsArr = rawAny.Elements as unknown[];
 	const newIndexByTempId: Record<number, number> = {};
 	for (const de of draft.newElements) {
-		elementsArr.push([
-			"Generic",
-			{ __kind: "Vector", x: de.x, y: de.y, z: de.z },
-			{ __kind: "Angle", p: 0, y: de.yaw, r: 0 },
-			// keep width/height only if they differ from the Generic default
-			...(de.width !== 4 || de.height !== 4 ? [] : []),
-		] as any);
-		const idx = elementsArr.length;
-		const entry = elementsArr[idx - 1] as any;
+		// Positional slots: [template, Vector, Angle]. Width/Height are added
+		// below as named overrides, but only when they differ from the Generic
+		// template default (4x4).
+		const entry = ["Generic", { __kind: "Vector", x: de.x, y: de.y, z: de.z }, { __kind: "Angle", p: 0, y: de.yaw, r: 0 }] as any;
 		if (de.width !== 4) entry.Width = de.width;
 		if (de.height !== 4) entry.Height = de.height;
-		newIndexByTempId[de.tempId] = idx;
+		elementsArr.push(entry);
+		newIndexByTempId[de.tempId] = elementsArr.length;
 	}
 
 	const rowIndex = (row: Row): number => (row.kind === "existing" ? row.elementIndex! : newIndexByTempId[row.draftEl!.tempId]);

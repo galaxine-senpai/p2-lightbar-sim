@@ -287,12 +287,21 @@ export function compileComponent(rawInput: RawComponent, opts: CompileOptions = 
 
 	// ===== Elements =====
 	const elementsRawValue = raw.Elements as unknown;
-	const elementsRaw: RawElement[] = Array.isArray(elementsRawValue)
-		? (elementsRawValue as RawElement[])
-		: isPlainObject(elementsRawValue)
-			? (Object.values(elementsRawValue) as RawElement[])
-			: [];
-	if (elementsRawValue !== undefined && !Array.isArray(elementsRawValue) && !isPlainObject(elementsRawValue)) {
+	let elementsRaw: RawElement[] = [];
+	if (Array.isArray(elementsRawValue)) {
+		elementsRaw = elementsRawValue as RawElement[];
+	} else if (isPlainObject(elementsRawValue)) {
+		// Sparse `{ [n] = {...} }` table form (a Lua-to-JS conversion edge
+		// case): the literal numeric keys ARE the 1-based element indices, so
+		// place each at its own slot rather than collapsing to iteration
+		// order -- otherwise `{ [1]=.., [5]=.. }` would renumber to 1,2 and
+		// every Frames/StateMap reference to element 5 would hit the wrong
+		// light.
+		for (const [k, v] of Object.entries(elementsRawValue)) {
+			const n = Number(k);
+			if (Number.isInteger(n) && n >= 1) elementsRaw[n - 1] = v as RawElement;
+		}
+	} else if (elementsRawValue !== undefined) {
 		warnings.push("COMPONENT.Elements was not a table (likely an unsupported multi-component file); elements skipped.");
 	}
 	const elements: CompiledElement[] = [];

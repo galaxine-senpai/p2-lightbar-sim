@@ -64,6 +64,14 @@ let playing = true;
 let activeTab: "dashboard" | "segments" | "pattern" | "code" | "export" = "dashboard";
 let searchQuery = "";
 let activeCategory: string | null = null;
+// The render loop repaints only when something can have visibly changed: it
+// advances (and redraws) every frame while playing, and otherwise only after
+// an explicit invalidate() -- a new component, a dashboard/segment change, or
+// a resize. A paused, settled canvas costs nothing per frame.
+let needsRender = true;
+function invalidate() {
+	needsRender = true;
+}
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 renderer = new LightbarRenderer(canvas);
@@ -177,6 +185,9 @@ function setTab(tab: typeof activeTab) {
 }
 
 function renderTab() {
+	// Any interaction that re-renders the inspector (mode toggles, segment
+	// forcing, component swaps) can change what the canvas should show.
+	invalidate();
 	const el = document.getElementById("tab-content")!;
 	el.innerHTML = "";
 	if (!current || !player) {
@@ -283,13 +294,17 @@ function renderSegments(el: HTMLElement) {
 document.getElementById("play-pause")!.addEventListener("click", (e) => {
 	playing = !playing;
 	(e.target as HTMLButtonElement).textContent = playing ? "Pause" : "Play";
+	invalidate(); // repaint the final settled frame on pause / pick straight back up on resume
 });
 document.getElementById("reset-dash")!.addEventListener("click", () => {
 	player?.reset();
 	renderTab();
 });
 
-window.addEventListener("resize", () => renderer?.resize());
+window.addEventListener("resize", () => {
+	renderer?.resize();
+	invalidate();
+});
 
 // ===== Animation loop =====
 let lastT = performance.now();
@@ -305,13 +320,11 @@ function loop(t: number) {
 		fpsAccum = 0;
 		frameCount = 0;
 	}
-	if (player && renderer) {
+	if (player && renderer && (playing || needsRender)) {
 		if (playing) player.advance(dt);
 		const states = player.getElementStates();
 		renderer.draw(states);
-		if (activeTab === "segments") {
-			// live-update the active sequence indicator without full re-render churn
-		}
+		needsRender = false;
 	}
 	requestAnimationFrame(loop);
 }

@@ -1,6 +1,10 @@
 import type { CompiledComponent, CompiledElement, CompiledSegment, ResolvedState, RGB, BoneStateDef } from "./types";
 import { parseStateToken, mixRGB } from "./color";
 
+/** Matches compiler.ts's DEFAULT_FRAME_DURATION; used only as a divide-by-zero
+ * backstop for components that declare an invalid FrameDuration. */
+const FALLBACK_FRAME_DURATION = 1 / 24;
+
 interface BoneRuntime {
 	angle: number; // degrees, [0, 360)
 	headingToEnd: boolean; // Sweep only: currently travelling toward sweepEnd vs sweepStart
@@ -94,6 +98,13 @@ export class ComponentPlayer {
 	private visualColor: Record<number, RGB> = {};
 	private lastStatesTimeMs = 0;
 	private boneRuntime: Record<number, BoneRuntime> = {};
+	/** Resumable frame cursor for sequences with VariableFrameDuration, keyed
+	 * by segment name. Sequence elapsed time only ever grows while an
+	 * activation is held, so the sinusoidal frame walk (see
+	 * `variableFrameIndex`) resumes from here instead of restarting from t=0
+	 * every render. Invalidated when the segment's activation changes or on
+	 * reset. */
+	private vfdCursor: Record<string, { sinceMs: number; tSec: number; steps: number }> = {};
 
 	constructor(component: CompiledComponent) {
 		this.component = component;
@@ -132,6 +143,7 @@ export class ComponentPlayer {
 		this.visualIntensity = {};
 		this.visualColor = {};
 		this.boneRuntime = {};
+		this.vfdCursor = {};
 		for (const name of Object.keys(this.component.segments)) {
 			this.activation[name] = { key: null, channel: null, sequenceName: null, since: 0 };
 		}
@@ -160,7 +172,10 @@ export class ComponentPlayer {
 				// the first/last listed -- e.g. Vehicle.AutomaticLighting's
 				// "PARKING" entry is a strict superset of "HEADLIGHTS"'s
 				// conditions plus extra requirements, and must win over it
-				// whenever both are satisfied, regardless of array order.
+				// whenever both are satisfied, regardless of array order. A
+				// strict `>` keeps the earlier entry on an exact specificity
+				// tie; a zero-condition entry (`[].every` is vacuously true)
+				// stays lowest priority and never displaces a conditional match.
 				let resolved: string | null = null;
 				let bestSpecificity = -1;
 				for (const entry of modes) {
@@ -169,7 +184,7 @@ export class ComponentPlayer {
 						const val = this.currentModes[condChannel];
 						return val != null && allowed.includes(val);
 					});
-					if (ok && conditionEntries.length >= bestSpecificity) {
+					if (ok && conditionEntries.length > bestSpecificity) {
 						resolved = entry.mode;
 						bestSpecificity = conditionEntries.length;
 					}
@@ -244,10 +259,19 @@ export class ComponentPlayer {
 			const sequence = seg.sequences[act.sequenceName];
 			if (!sequence || sequence.steps.length === 0)
 				return { priority, order: act.order ?? 0, assignments: seg.frames[0]?.assignments ?? {} };
-			const frameDuration = sequence.frameDuration ?? seg.frameDuration;
-			const elapsed = Math.max(0, this.simTimeMs - act.since);
+			const elapsedSec = Math.max(0, this.simTimeMs - act.since) / 1000;
 			const stepCount = sequence.steps.length;
-			const rawIndex = Math.floor(elapsed / (frameDuration * 1000));
+			let rawIndex: number;
+			if (sequence.variableFrameDuration) {
+				rawIndex = this.variableFrameIndex(seg.name, act.since, elapsedSec, sequence.variableFrameDuration, stepCount, sequence.isRepeating);
+			} else {
+				const rawDuration = sequence.frameDuration ?? seg.frameDuration;
+				// A component that (invalidly) declares FrameDuration = 0 -- or a
+				// non-finite value -- would otherwise divide to Infinity/NaN and
+				// silently freeze the sequence on its zero frame.
+				const frameDuration = rawDuration > 0 && Number.isFinite(rawDuration) ? rawDuration : FALLBACK_FRAME_DURATION;
+				rawIndex = Math.floor(elapsedSec / frameDuration);
+			}
 			const cursor = sequence.isRepeating ? ((rawIndex % stepCount) + stepCount) % stepCount : Math.min(rawIndex, stepCount - 1);
 			const frameNum = sequence.steps[cursor] ?? 0;
 			const frame = seg.frames[frameNum] ?? seg.frames[0];
@@ -255,6 +279,45 @@ export class ComponentPlayer {
 		}
 		if (seg.off === "PASS") return null; // idle + PASS: defers entirely, contributes nothing
 		return { priority, order: 0, assignments: seg.frames[0]?.assignments ?? {} };
+	}
+
+	/** Frame index for a sequence whose FrameDuration oscillates (Photon2's
+	 * `:SetVariableTiming(slow, fast, rate)` / `VariableFrameDuration`). The
+	 * real runtime resamples the duration at the start of every frame from
+	 * `Photon2.Util.DynamicTimer` (a sine sweep between `slow` and `fast` at
+	 * `rate` rad/s), so there is no closed form -- this walks frame by frame
+	 * accumulating durations until it passes `elapsedSec`. The walk is
+	 * resumed across calls via `vfdCursor` (elapsed time only grows while the
+	 * activation is held), keeping it ~O(frames since the last render). */
+	private variableFrameIndex(
+		segName: string,
+		sinceMs: number,
+		elapsedSec: number,
+		vfd: { slow: number; fast: number; rate: number },
+		stepCount: number,
+		isRepeating: boolean,
+	): number {
+		const slow = Math.max(0.001, vfd.slow);
+		const fast = Math.max(slow, vfd.fast);
+		const rate = vfd.rate;
+
+		let cache = this.vfdCursor[segName];
+		if (!cache || cache.sinceMs !== sinceMs || cache.tSec > elapsedSec) {
+			cache = { sinceMs, tSec: 0, steps: 0 };
+			this.vfdCursor[segName] = cache;
+		}
+
+		// Non-repeating sequences clamp to the last frame, so there is no point
+		// walking past it.
+		const stepCap = isRepeating ? Number.POSITIVE_INFINITY : Math.max(0, stepCount - 1);
+		let guard = 100_000; // safety valve for a very large time jump
+		while (guard-- > 0 && cache.steps < stepCap) {
+			const fd = ((Math.sin(cache.tSec * rate) + 1) / 2) * (fast - slow) + slow;
+			if (cache.tSec + fd > elapsedSec) break;
+			cache.tSec += fd;
+			cache.steps++;
+		}
+		return cache.steps;
 	}
 
 	/** Which (channel, mode) is currently driving each segment -- for UI display. */

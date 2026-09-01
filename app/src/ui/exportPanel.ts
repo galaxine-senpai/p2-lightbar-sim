@@ -39,8 +39,14 @@ export function renderExportPanel(el: HTMLElement, component: CompiledComponent)
 		const a = document.createElement("a");
 		a.href = url;
 		a.download = fileName;
+		// The anchor must be in the document for the synthetic click to
+		// reliably start a download in Firefox, and the object URL must
+		// outlive the click -- revoking it synchronously here can abort the
+		// download before the browser has read the blob.
+		document.body.appendChild(a);
 		a.click();
-		URL.revokeObjectURL(url);
+		a.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	});
 }
 
