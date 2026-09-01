@@ -167,26 +167,28 @@ export class ComponentPlayer {
 		for (let pass = 0; pass < 4; pass++) {
 			let changed = false;
 			for (const [channel, modes] of Object.entries(this.component.virtualOutputs)) {
-				// When multiple mode entries match simultaneously, the most
-				// SPECIFIC one wins (most condition keys required) rather than
-				// the first/last listed -- e.g. Vehicle.AutomaticLighting's
-				// "PARKING" entry is a strict superset of "HEADLIGHTS"'s
-				// conditions plus extra requirements, and must win over it
-				// whenever both are satisfied, regardless of array order. A
-				// strict `>` keeps the earlier entry on an exact specificity
-				// tie; a zero-condition entry (`[].every` is vacuously true)
-				// stays lowest priority and never displaces a conditional match.
+				// Mirror upstream Component:ApplyModeUpdate
+				// (meta/lighting_component.lua:620-638): walk the mode entries in
+				// array order and take the FIRST whose conditions are all met,
+				// then stop. There is no "most specific wins" preference -- an
+				// earlier entry beats a later one even if the later one lists
+				// more conditions. (Consequence: for the Feature-generated
+				// Vehicle.AutomaticLighting, "HEADLIGHTS" -- listed first, and a
+				// condition-subset of "PARKING" -- always wins, so "PARKING" is
+				// unreachable, exactly as in-game.) Upstream seeds "OFF" when
+				// nothing matches; we use null to mean the derived channel is
+				// inactive. An entry with no conditions matches unconditionally
+				// (`[].every` is vacuously true), same as upstream's empty
+				// condition loop.
 				let resolved: string | null = null;
-				let bestSpecificity = -1;
 				for (const entry of modes) {
-					const conditionEntries = Object.entries(entry.conditions);
-					const ok = conditionEntries.every(([condChannel, allowed]) => {
+					const ok = Object.entries(entry.conditions).every(([condChannel, allowed]) => {
 						const val = this.currentModes[condChannel];
 						return val != null && allowed.includes(val);
 					});
-					if (ok && conditionEntries.length > bestSpecificity) {
+					if (ok) {
 						resolved = entry.mode;
-						bestSpecificity = conditionEntries.length;
+						break;
 					}
 				}
 				if (this.currentModes[channel] !== resolved) {
@@ -297,9 +299,13 @@ export class ComponentPlayer {
 		stepCount: number,
 		isRepeating: boolean,
 	): number {
-		const slow = Math.max(0.001, vfd.slow);
+		// `vfd` is normalized by the compiler (finite fields, slow <= fast). The
+		// extra floors here only defend a hand-built object: `slow > 0` keeps
+		// the sine's minimum (`sin == -1` => fd == slow) strictly positive so
+		// the walk always advances, and a finite `rate` avoids `Math.sin(NaN)`.
+		const slow = vfd.slow > 0 ? vfd.slow : 0.001;
 		const fast = Math.max(slow, vfd.fast);
-		const rate = vfd.rate;
+		const rate = Number.isFinite(vfd.rate) ? vfd.rate : 0.5;
 
 		let cache = this.vfdCursor[segName];
 		if (!cache || cache.sinceMs !== sinceMs || cache.tSec > elapsedSec) {

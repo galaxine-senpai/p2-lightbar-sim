@@ -234,6 +234,21 @@ function normalizeFramesTable(raw: unknown): Array<[number, unknown]> {
 	return [];
 }
 
+/** Direct port of the VariableFrameDuration handling in Sequence.New
+ * (meta/sequence.lua:97-115): fill any missing/non-finite field with
+ * upstream's default (Slow 0.1, Fast 1, Rate 0.5), then swap so slow <= fast.
+ * A finite `rate` is guaranteed here so the player's sine walk can never hit
+ * `Math.sin(NaN)`. */
+function normalizeVariableFrameDuration(raw: unknown): { slow: number; fast: number; rate: number } | undefined {
+	if (!isPlainObject(raw)) return undefined;
+	const num = (v: unknown, dflt: number) => (typeof v === "number" && Number.isFinite(v) ? v : dflt);
+	let slow = num(raw.Slow, 0.1);
+	let fast = num(raw.Fast, 1);
+	const rate = num(raw.Rate, 0.5);
+	if (slow > fast) [slow, fast] = [fast, slow];
+	return { slow, fast, rate };
+}
+
 function frameValueToAssignments(
 	value: unknown,
 	elementGroups: Record<string, number[]>,
@@ -400,12 +415,11 @@ export function compileComponent(rawInput: RawComponent, opts: CompileOptions = 
 		const sequences: Record<string, CompiledSequence> = {};
 		for (const [seqName, seqRaw] of Object.entries((segRaw as RawSegment).Sequences || {})) {
 			const arr = (Array.isArray(seqRaw) ? seqRaw : []) as number[] & Record<string, unknown>;
-			const vfd = arr.VariableFrameDuration as { Slow: number; Fast: number; Rate: number } | undefined;
 			sequences[seqName] = {
 				name: seqName,
 				steps: [...arr],
 				frameDuration: typeof arr.FrameDuration === "number" ? arr.FrameDuration : undefined,
-				variableFrameDuration: vfd ? { slow: vfd.Slow, fast: vfd.Fast, rate: vfd.Rate } : undefined,
+				variableFrameDuration: normalizeVariableFrameDuration(arr.VariableFrameDuration),
 				isRepeating: arr.IsRepeating === undefined ? true : Boolean(arr.IsRepeating),
 			};
 		}
