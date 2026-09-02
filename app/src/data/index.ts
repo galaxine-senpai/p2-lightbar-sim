@@ -23,6 +23,9 @@ export interface LibraryEntry {
 	/** For a single-component file this is the file id; for a file that
 	 * defines several it is the primary (first) component's COMPONENT.Name. */
 	id: string;
+	/** The .lua file's name without extension -- the key the update overlay
+	 * addresses an entry by. */
+	fileId: string;
 	title: string;
 	category: string;
 	base?: string;
@@ -84,39 +87,84 @@ function parseMultiComponentMeta(fileId: string, src: string): Array<{ id: strin
 // component id (file id, or a variant's COMPONENT.Name) -> the .lua source it lives in
 const sourceByComponentId = new Map<string, string>();
 
-export const library: LibraryEntry[] = Object.entries(componentModules)
-	.map(([path, src]) => {
-		const fileId = path.split("/").pop()!.replace(/\.lua$/, "");
-		const isMulti = /Photon2\.RegisterComponent\s*\(/.test(src);
+/** Every component id an entry contributes (primary + variants + its file id). */
+function entryIds(e: LibraryEntry): string[] {
+	return [e.fileId, e.id, ...e.variants.map((v) => v.id)];
+}
 
-		if (!isMulti) {
-			sourceByComponentId.set(fileId, src);
-			return { id: fileId, ...quickMeta(fileId, src), source: src, variants: [] };
-		}
+/** Build one library entry from a .lua file's source, registering its ids in
+ * sourceByComponentId. */
+function makeEntry(fileId: string, src: string): LibraryEntry {
+	const isMulti = /Photon2\.RegisterComponent\s*\(/.test(src);
+	const parsed = isMulti ? parseMultiComponentMeta(fileId, src) : [];
 
-		const parsed = parseMultiComponentMeta(fileId, src);
-		if (parsed.length < 2) {
-			// Not actually multi (or unparseable) -- treat as a single entry.
-			sourceByComponentId.set(fileId, src);
-			return { id: fileId, ...quickMeta(fileId, src), source: src, variants: [] };
-		}
-
+	if (parsed.length < 2) {
 		sourceByComponentId.set(fileId, src);
-		for (const c of parsed) sourceByComponentId.set(c.id, src);
-		const [primary, ...rest] = parsed;
-		return {
-			id: primary.id,
-			title: primary.title,
-			category: primary.category,
-			base: primary.base,
-			source: src,
-			variants: rest.map((v) => ({ id: v.id, title: v.title, base: v.base })),
-		};
-	})
+		return { id: fileId, fileId, ...quickMeta(fileId, src), source: src, variants: [] };
+	}
+
+	sourceByComponentId.set(fileId, src);
+	for (const c of parsed) sourceByComponentId.set(c.id, src);
+	const [primary, ...rest] = parsed;
+	return {
+		id: primary.id,
+		fileId,
+		title: primary.title,
+		category: primary.category,
+		base: primary.base,
+		source: src,
+		variants: rest.map((v) => ({ id: v.id, title: v.title, base: v.base })),
+	};
+}
+
+function fileIdOf(path: string): string {
+	return path.split("/").pop()!.replace(/\.lua$/, "");
+}
+
+export const library: LibraryEntry[] = Object.entries(componentModules)
+	.map(([path, src]) => makeEntry(fileIdOf(path), src))
 	.sort((a, b) => a.title.localeCompare(b.title));
 
 const rawCache = new Map<string, RawComponent>();
 const compiledCache = new Map<string, CompiledComponent>();
+
+/**
+ * Replace, add, or remove bundled component files with sources fetched and
+ * accepted from upstream (see data/remote.ts). `patch` is keyed by file name
+ * ("photon_x.lua"); a null value means the file was removed upstream. Rebuilds
+ * the affected library entries, drops their caches, and forces re-classification
+ * on the next classifyLibrary() call.
+ */
+export function overlayRemoteSources(patch: Record<string, string | null>): void {
+	for (const [fileName, src] of Object.entries(patch)) {
+		const fileId = fileName.replace(/\.lua$/, "");
+		const existingIdx = library.findIndex((e) => e.fileId === fileId);
+		const existing = existingIdx >= 0 ? library[existingIdx] : undefined;
+
+		if (existing) {
+			for (const id of entryIds(existing)) {
+				sourceByComponentId.delete(id);
+				rawCache.delete(id);
+				compiledCache.delete(id);
+			}
+		}
+
+		if (src === null) {
+			if (existingIdx >= 0) library.splice(existingIdx, 1);
+			continue;
+		}
+
+		const entry = makeEntry(fileId, src);
+		for (const id of entryIds(entry)) {
+			rawCache.delete(id);
+			compiledCache.delete(id);
+		}
+		if (existingIdx >= 0) library[existingIdx] = entry;
+		else library.push(entry);
+	}
+	library.sort((a, b) => a.title.localeCompare(b.title));
+	classified = false;
+}
 
 export function resolveRawComponent(id: string): RawComponent | undefined {
 	try {
@@ -175,7 +223,8 @@ let classified = false;
 /** One-time pass: compile every primary component and record whether it has
  * any drawable element and which element groups it uses. Compiling also
  * warms compiledCache, so the first click on any component is instant
- * afterward. Safe to call repeatedly. */
+ * afterward. Cheap to call repeatedly; overlayRemoteSources() resets the
+ * one-time guard so a re-check after an update re-runs it. */
 export function classifyLibrary(): void {
 	if (classified) return;
 	classified = true;

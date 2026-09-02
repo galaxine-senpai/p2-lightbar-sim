@@ -136,6 +136,7 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
 			const row = document.createElement("div");
 			row.className = "row wrap";
 			row.style.marginBottom = "4px";
+			// html-safe: de.tempId is an integer counter; numInput() emits <input>s from numbers and literal field names. No component/remote data.
 			row.innerHTML = `
         <span style="font-size:11px;color:var(--text-dim);width:50px;">new #${de.tempId}</span>
         ${numInput("x", de.x)} ${numInput("y", de.y)} ${numInput("z", de.z)} ${numInput("yaw", de.yaw)}
@@ -162,6 +163,7 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
 	const cfg = document.createElement("div");
 	cfg.className = "row wrap";
 	cfg.style.marginBottom = "8px";
+	// html-safe: escapeAttr() on the two text fields (local draft state, not component data); frameCount/frameDuration are numbers; the rest is a static form.
 	cfg.innerHTML = `
     <div class="field-row" style="min-width:140px;">
       <label>Segment name</label>
@@ -260,6 +262,7 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
 	const channelOptions = [...Object.keys(STANDARD_CHANNELS), "custom"]
 		.map((c) => `<option value="${c}" ${draft.channel === c ? "selected" : ""}>${c}</option>`)
 		.join("");
+	// html-safe: channelOptions is built from the STANDARD_CHANNELS constant + "custom"; escapeAttr() wraps the one text field. No component/remote data.
 	assignRow.innerHTML = `
     <div class="field-row">
       <label>Activate on channel</label>
@@ -276,6 +279,7 @@ export function renderPatternEditor(el: HTMLElement, component: CompiledComponen
 		const sel = assignRow.querySelector("#mode-select") as HTMLSelectElement | null;
 		if (!sel) return;
 		const modes = STANDARD_CHANNELS[draft.channel] || [];
+		// html-safe: `modes` are STANDARD_CHANNELS constant strings only.
 		sel.innerHTML = modes.map((m) => `<option value="${m}" ${draft.mode === m ? "selected" : ""}>${m}</option>`).join("");
 		if (!modes.includes(draft.mode)) draft.mode = modes[0] || "ON";
 	}

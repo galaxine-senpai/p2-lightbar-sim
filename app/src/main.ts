@@ -1,6 +1,16 @@
 import "./polyfills";
 import "./style.css";
 import { library, compileLibraryComponent, classifyLibrary, getCategoryTags, getSupportedCount, UNSUPPORTED_CATEGORY } from "./data";
+import {
+	isEnabled as updatesEnabled,
+	setEnabled as setUpdatesEnabled,
+	loadAcceptedOverlay,
+	checkForUpdates,
+	applyUpdates,
+	lastSyncedAt,
+	type CheckResult,
+	type RemoteChange,
+} from "./data/remote";
 import { compileComponent } from "./engine/compiler";
 import { getDefaultLightStatesByGroup } from "./lua/loader";
 import { ComponentPlayer } from "./engine/player";
@@ -25,6 +35,11 @@ app.innerHTML = `
         <div class="row wrap" id="category-filters" style="margin-top:8px;gap:4px;"></div>
       </div>
       <div class="library-list" id="library-list"></div>
+      <div id="update-bar">
+        <label class="upd-toggle"><input type="checkbox" id="upd-enabled" /> Check GitHub for updates</label>
+        <button id="upd-check" class="subtle" disabled>Check now</button>
+        <div id="upd-status"></div>
+      </div>
       <div style="padding:8px;border-top:1px solid var(--border);">
         <button id="new-custom-btn" style="width:100%;">+ New Custom Lightbar</button>
       </div>
@@ -52,6 +67,18 @@ app.innerHTML = `
         <button class="tab-btn" data-tab="export">Export</button>
       </div>
       <div class="tab-content" id="tab-content"></div>
+    </div>
+  </div>
+  <div id="upd-modal" hidden>
+    <div class="upd-modal-box">
+      <h3>Component updates from Photon 2</h3>
+      <p class="upd-modal-sub">Fetched from <code>github.com/photonle/Photon-v2</code> (branch <code>main</code>). Nothing is downloaded or loaded until you apply.</p>
+      <div id="upd-modal-list"></div>
+      <div id="upd-modal-result"></div>
+      <div class="upd-modal-actions">
+        <button id="upd-apply" class="primary">Apply</button>
+        <button id="upd-cancel">Not now</button>
+      </div>
     </div>
   </div>
 `;
@@ -257,16 +284,169 @@ document.getElementById("new-custom-btn")!.addEventListener("click", () => {
 	setTab("pattern");
 });
 
-// Compile every component once up front so tag counts and the Unsupported
-// filter are accurate from the first paint (this also warms the compile
-// cache, making the first component click instant).
-{
+// ===== Component updates (opt-in, off by default) =====
+let pendingChanges: RemoteChange[] = [];
+
+function fmtAgo(ts: number | undefined): string {
+	if (!ts) return "never";
+	const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+	if (s < 60) return "just now";
+	if (s < 3600) return `${Math.round(s / 60)} min ago`;
+	if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+	return `${Math.round(s / 86400)} d ago`;
+}
+
+function renderUpdateStatus(extra?: string) {
+	const el = document.getElementById("upd-status")!;
+	el.textContent = "";
+	el.classList.remove("has-changes");
+	if (extra !== undefined) {
+		el.textContent = extra;
+		return;
+	}
+	if (!updatesEnabled()) {
+		el.textContent = "Using the bundled component snapshot.";
+		return;
+	}
+	if (pendingChanges.length) {
+		el.classList.add("has-changes");
+		const link = document.createElement("button");
+		link.className = "upd-review-link";
+		link.textContent = `${pendingChanges.length} update${pendingChanges.length === 1 ? "" : "s"} available — review`;
+		link.onclick = openUpdateModal;
+		el.append(link);
+		return;
+	}
+	el.textContent = `In sync with Photon 2 · checked ${fmtAgo(lastSyncedAt())}`;
+}
+
+function handleCheckResult(res: CheckResult) {
+	if (res.status === "changes") {
+		pendingChanges = res.changes;
+		renderUpdateStatus();
+	} else if (res.status === "offline") {
+		renderUpdateStatus("Offline — using the bundled snapshot.");
+	} else if (res.status === "error") {
+		renderUpdateStatus(res.message ?? "Update check failed — using the bundled snapshot.");
+	} else if (res.status === "up-to-date") {
+		pendingChanges = [];
+		renderUpdateStatus();
+	}
+}
+
+function openUpdateModal() {
+	const listEl = document.getElementById("upd-modal-list")!;
+	const resultEl = document.getElementById("upd-modal-result")!;
+	listEl.textContent = "";
+	resultEl.textContent = "";
+	(document.getElementById("upd-apply") as HTMLButtonElement).disabled = pendingChanges.length === 0;
+	for (const c of pendingChanges) {
+		const row = document.createElement("div");
+		row.className = "upd-change " + c.kind;
+		const tag = document.createElement("span");
+		tag.className = "upd-kind";
+		tag.textContent = c.kind;
+		const label = document.createElement("span");
+		// c.title is our local title (safe); c.name is a filename from the
+		// GitHub listing -- both set as text, never interpolated into HTML.
+		label.textContent = c.title ? `${c.title}` : c.name.replace(/\.lua$/, "");
+		const sub = document.createElement("span");
+		sub.className = "upd-file";
+		sub.textContent = c.name + (c.kind === "added" ? " (new)" : "");
+		row.append(tag, label, sub);
+		listEl.append(row);
+	}
+	(document.getElementById("upd-modal") as HTMLElement).hidden = false;
+}
+
+function closeUpdateModal() {
+	(document.getElementById("upd-modal") as HTMLElement).hidden = true;
+}
+
+async function applyPending() {
+	const applyBtn = document.getElementById("upd-apply") as HTMLButtonElement;
+	applyBtn.disabled = true;
+	applyBtn.textContent = "Applying…";
+	const res = await applyUpdates(pendingChanges);
+	applyBtn.textContent = "Apply";
+
+	// Rebuild everything the overlay touched.
+	classifyLibrary();
+	renderCategoryFilters();
+	renderLibraryList();
+	if (current) {
+		try {
+			setComponent(compileLibraryComponent(current.id));
+		} catch {
+			/* current component may have been removed upstream */
+		}
+	}
+
+	const resultEl = document.getElementById("upd-modal-result")!;
+	resultEl.textContent = "";
+	const ok = document.createElement("div");
+	ok.textContent =
+		res.applied > 0 ? `Applied ${res.applied} update${res.applied === 1 ? "" : "s"}.` : "Nothing applied.";
+	resultEl.append(ok);
+	for (const r of res.rejected) {
+		const bad = document.createElement("div");
+		bad.className = "upd-rejected";
+		bad.textContent = `Kept the current ${r.name} — ${r.reason}`;
+		resultEl.append(bad);
+	}
+	pendingChanges = pendingChanges.filter((c) => res.rejected.some((r) => r.name === c.name));
+	renderUpdateStatus();
+	if (pendingChanges.length === 0) setTimeout(closeUpdateModal, res.rejected.length ? 2500 : 900);
+}
+
+document.getElementById("upd-enabled")!.addEventListener("change", (e) => {
+	const on = (e.target as HTMLInputElement).checked;
+	setUpdatesEnabled(on);
+	(document.getElementById("upd-check") as HTMLButtonElement).disabled = !on;
+	renderUpdateStatus();
+	if (on) runCheck();
+});
+document.getElementById("upd-check")!.addEventListener("click", () => runCheck());
+document.getElementById("upd-apply")!.addEventListener("click", applyPending);
+document.getElementById("upd-cancel")!.addEventListener("click", closeUpdateModal);
+
+async function runCheck() {
+	const btn = document.getElementById("upd-check") as HTMLButtonElement;
+	btn.disabled = true;
+	renderUpdateStatus("Checking…");
+	try {
+		handleCheckResult(await checkForUpdates());
+	} finally {
+		btn.disabled = !updatesEnabled();
+	}
+}
+
+// ===== Boot =====
+async function boot() {
+	(document.getElementById("upd-enabled") as HTMLInputElement).checked = updatesEnabled();
+	(document.getElementById("upd-check") as HTMLButtonElement).disabled = !updatesEnabled();
+
+	// Re-apply updates the user accepted in a previous session (from local
+	// storage, no network) before the first classify pass.
+	try {
+		await loadAcceptedOverlay();
+	} catch (e) {
+		console.warn("could not load accepted component updates:", e);
+	}
+
+	// Compile every component once up front so tag counts and the Unsupported
+	// filter are accurate from the first paint (also warms the compile cache).
 	const t0 = performance.now();
 	classifyLibrary();
 	console.info(`classified ${library.length} components in ${(performance.now() - t0).toFixed(0)}ms`);
+
+	renderCategoryFilters();
+	renderLibraryList();
+	renderUpdateStatus();
+
+	if (updatesEnabled()) runCheck();
 }
-renderCategoryFilters();
-renderLibraryList();
+boot();
 
 // ===== Tabs =====
 document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {

@@ -5,11 +5,14 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
+    "predev": "node scripts/gen-bundled-manifest.mjs",
     "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm:dev:web\" \"electron .\"",
     "dev:web": "vite",
+    "prebuild": "node scripts/gen-bundled-manifest.mjs && node scripts/check-html-sinks.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "electron . --prod"
+    "start": "electron . --prod",
+    "gen-manifest": "node scripts/gen-bundled-manifest.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.5",

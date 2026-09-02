@@ -271,6 +271,11 @@ body {
 	line-height: 1.55;
 }
 
+/* An id selector beats the UA `[hidden] { display: none }`, so re-assert it. */
+#viewer-message[hidden] {
+	display: none;
+}
+
 .viewer-toolbar {
 	display: flex;
 	align-items: center;
@@ -541,4 +546,145 @@ select {
 	border-radius: 6px;
 	padding: 6px 8px;
 	font-size: 12.5px;
+}
+
+/* ===== Component update bar (opt-in GitHub sync) ===== */
+#update-bar {
+	padding: 7px 10px;
+	border-top: 1px solid var(--border);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+	font-size: 11px;
+}
+
+.upd-toggle {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	color: var(--text-dim);
+	cursor: pointer;
+	user-select: none;
+}
+
+.upd-toggle input {
+	accent-color: var(--accent);
+}
+
+#update-bar #upd-check {
+	padding: 2px 8px;
+	font-size: 10.5px;
+}
+
+#upd-status {
+	flex-basis: 100%;
+	color: var(--text-dim);
+	min-height: 14px;
+}
+
+#upd-status.has-changes {
+	color: var(--text);
+}
+
+.upd-review-link {
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--accent);
+	font-size: 11px;
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+#upd-modal {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 50;
+}
+
+#upd-modal[hidden] {
+	display: none;
+}
+
+.upd-modal-box {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	width: min(520px, 92vw);
+	max-height: 82vh;
+	overflow: auto;
+	padding: 18px 20px;
+}
+
+.upd-modal-box h3 {
+	margin: 0 0 4px;
+	font-size: 15px;
+}
+
+.upd-modal-sub {
+	margin: 0 0 12px;
+	font-size: 11.5px;
+	color: var(--text-dim);
+}
+
+#upd-modal-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 12px;
+}
+
+.upd-change {
+	display: grid;
+	grid-template-columns: 68px 1fr auto;
+	align-items: baseline;
+	gap: 8px;
+	padding: 5px 8px;
+	background: var(--panel-2);
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+.upd-kind {
+	font-size: 9.5px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.upd-change.added .upd-kind {
+	color: var(--good);
+}
+.upd-change.modified .upd-kind {
+	color: var(--accent);
+}
+.upd-change.removed .upd-kind {
+	color: var(--accent-2);
+}
+
+.upd-file {
+	font-size: 10px;
+	color: var(--text-dim);
+	font-family: ui-monospace, monospace;
+}
+
+#upd-modal-result {
+	font-size: 11.5px;
+	color: var(--text-dim);
+	margin-bottom: 10px;
+}
+
+#upd-modal-result .upd-rejected {
+	color: var(--accent-2);
+}
+
+.upd-modal-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
 }

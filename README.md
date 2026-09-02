@@ -37,8 +37,25 @@ npm run build
 ```
 
 Runs `tsc` as a type check (`strict`, must pass) followed by `vite build`. The
-result is a static bundle in `app/dist/` (git-ignored) with no server
-component; `npm run preview` serves it locally.
+`prebuild` hook regenerates `src/data/bundledBlobManifest.json` (git blob
+hashes of the bundled component sources) and runs `scripts/check-html-sinks.mjs`,
+which fails the build on any `innerHTML` sink that interpolates an unescaped
+value. The result is a static bundle in `app/dist/` (git-ignored) with no
+server component; `npm run preview` serves it locally.
+
+## Component updates
+
+The bundled component sources are a snapshot of the upstream Photon 2
+`lua/photon-v2/library/components` directory. **Check GitHub for updates** in
+the library panel (off by default) compares that directory's current git blob
+hashes against the shipped manifest, with no downloads, and lists any
+added / modified / removed files by title. Nothing is fetched or loaded until
+you review and apply; accepted files are cached locally and re-applied on the
+next launch. Every failure mode — offline, rate-limited, blocked — falls back
+to the bundled snapshot, and a fetched file that does not parse is rejected
+with the previous version kept. See
+[`docs/upstream-divergences.md`](docs/upstream-divergences.md) for the trust
+model this introduces.
 
 ## Tests
 
