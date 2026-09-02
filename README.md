@@ -24,7 +24,10 @@ npm install
 npm run dev
 ```
 
-Starts the Vite dev server (`http://localhost:5173`, hot reload).
+`npm run dev` starts the Vite dev server and opens the app in an Electron
+window, with hot reload. `npm run dev:web` runs the dev server on its own for
+use in a browser at `http://localhost:5173`. After `npm run build`, `npm start`
+opens the built bundle in the Electron window without a dev server.
 
 ## Build
 

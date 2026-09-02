@@ -4,7 +4,7 @@
     {
       "name": "p2-lightbar-sim",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "app", "run", "dev", "--", "--host"],
+      "runtimeArgs": ["--prefix", "app", "run", "dev:web", "--", "--host"],
       "port": 5173
     }
   ]

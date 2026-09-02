@@ -15,6 +15,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // access is never exercised since this app only ever loads Lua source
 // strings and never calls Lua's `io.*`/`os.*` functions.
 export default defineConfig({
+	// Relative asset URLs so the built bundle loads from a file:// path (the
+	// Electron production shell uses loadFile on dist/index.html) as well as
+	// from any web host.
+	base: "./",
 	resolve: {
 		alias: {
 			fs: path.resolve(__dirname, "shims/fs.js"),

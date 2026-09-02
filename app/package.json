@@ -3,12 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm:dev:web\" \"electron .\"",
+    "dev:web": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "electron . --prod"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
+    "electron": "^44.1.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
   },
