@@ -133,6 +133,38 @@ body {
 	letter-spacing: 0.05em;
 }
 
+.lib-title-row {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.lib-chevron {
+	flex: none;
+	width: 10px;
+	font-size: 10px;
+	line-height: 1;
+	color: var(--text-dim);
+	cursor: pointer;
+	user-select: none;
+}
+
+.lib-chevron:hover {
+	color: var(--text);
+}
+
+.library-item.variant {
+	padding-left: 26px;
+	background: #16171a;
+	border-left: 2px solid #2a2c30;
+	font-size: 12px;
+}
+
+.library-item.variant.active {
+	background: #1a2c40;
+	border-left-color: var(--accent);
+}
+
 .viewer {
 	display: flex;
 	flex-direction: column;

@@ -89,9 +89,6 @@ Photon 2 Lua.
   cone of light that sweeps with the rotor's angle.
 - `Sound`, `Pose`, `Sequence`, `Sub`, and `Virtual` element types load and
   export but are not simulated.
-- A single `.lua` file can define several components (Whelen Tracer defines six;
-  Ion and Dominator four each). Only the first is loaded, so alternate variant
-  heads are not selectable.
 - Vehicle-level assembly (multi-component profiles, siren tone sets, equipment
   variants) is out of scope; the tool works on one component at a time.
 - Degree phasing on sequence references (`"SEQ:deg"`) is simulated but has no

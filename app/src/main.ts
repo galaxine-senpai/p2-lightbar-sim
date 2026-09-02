@@ -64,6 +64,7 @@ let playing = true;
 let activeTab: "dashboard" | "segments" | "pattern" | "code" | "export" = "dashboard";
 let searchQuery = "";
 let activeCategory: string | null = null;
+const expandedFiles = new Set<string>();
 // The render loop repaints only when something can have visibly changed: it
 // advances (and redraws) every frame while playing, and otherwise only after
 // an explicit invalidate() -- a new component, a dashboard/segment change, or
@@ -102,25 +103,64 @@ function renderLibraryList() {
 	const el = document.getElementById("library-list")!;
 	el.innerHTML = "";
 	const q = searchQuery.trim().toLowerCase();
+	const hit = (s: string) => s.toLowerCase().includes(q);
 	const items = library.filter((e) => {
 		if (activeCategory && e.category !== activeCategory) return false;
-		if (q && !e.title.toLowerCase().includes(q) && !e.id.toLowerCase().includes(q)) return false;
-		return true;
+		if (!q) return true;
+		return hit(e.title) || hit(e.id) || e.variants.some((v) => hit(v.title) || hit(v.id));
 	});
+	// entry/variant title/category/base are parsed straight out of component
+	// Lua source -- build every row with textContent so a crafted string
+	// can't inject markup into the library list.
 	for (const entry of items) {
+		const hasVariants = entry.variants.length > 0;
+		const searchExpands = q.length > 0 && hasVariants && !hit(entry.title) && !hit(entry.id);
+		const expanded = hasVariants && (expandedFiles.has(entry.id) || searchExpands);
+
 		const div = document.createElement("div");
 		div.className = "library-item" + (current?.id === entry.id ? " active" : "");
-		// entry.title/category/base are parsed straight out of component Lua
-		// source -- build with textContent so a crafted string can't inject
-		// markup into the library list.
+		const titleRow = document.createElement("div");
+		titleRow.className = "lib-title-row";
+		if (hasVariants) {
+			const chevron = document.createElement("span");
+			chevron.className = "lib-chevron";
+			chevron.textContent = expanded ? "▾" : "▸";
+			chevron.title = `${entry.variants.length + 1} variants`;
+			chevron.onclick = (ev) => {
+				ev.stopPropagation();
+				if (expandedFiles.has(entry.id)) expandedFiles.delete(entry.id);
+				else expandedFiles.add(entry.id);
+				renderLibraryList();
+			};
+			titleRow.appendChild(chevron);
+		}
 		const titleDiv = document.createElement("div");
-		titleDiv.textContent = entry.title;
+		titleDiv.textContent = hasVariants ? `${entry.title}  (${entry.variants.length + 1})` : entry.title;
+		titleRow.appendChild(titleDiv);
 		const catDiv = document.createElement("div");
 		catDiv.className = "cat";
 		catDiv.textContent = entry.base ? `${entry.category} · inherits ${entry.base}` : entry.category;
-		div.append(titleDiv, catDiv);
+		div.append(titleRow, catDiv);
 		div.onclick = () => selectLibraryComponent(entry.id);
 		el.appendChild(div);
+
+		if (!expanded) continue;
+		const variants = searchExpands ? entry.variants.filter((v) => hit(v.title) || hit(v.id)) : entry.variants;
+		for (const v of variants) {
+			const vdiv = document.createElement("div");
+			vdiv.className = "library-item variant" + (current?.id === v.id ? " active" : "");
+			const vt = document.createElement("div");
+			vt.textContent = v.title;
+			vdiv.appendChild(vt);
+			if (v.base) {
+				const vc = document.createElement("div");
+				vc.className = "cat";
+				vc.textContent = `inherits ${v.base}`;
+				vdiv.appendChild(vc);
+			}
+			vdiv.onclick = () => selectLibraryComponent(v.id);
+			el.appendChild(vdiv);
+		}
 	}
 	if (items.length === 0) {
 		el.innerHTML = `<div class="empty-state">No matches</div>`;

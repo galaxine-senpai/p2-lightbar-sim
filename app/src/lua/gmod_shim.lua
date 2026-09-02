@@ -227,13 +227,13 @@ function Photon2.ReloadVehicleFile() return false end
 -- LibraryComponent(), fill it in, Photon2.RegisterComponent() it, then call
 -- LibraryComponent() again for the next sibling (which often inherits from
 -- the first via COMPONENT.Base). Each call must return a genuinely FRESH
--- table (so later sections don't corrupt earlier ones' already-set fields),
--- but we only have one "primary" slot to report back to the host per file
--- load -- so we keep the FIRST one registered, which is always the
--- self-contained base definition the later sibling sections build on, and
--- matches the title/metadata our (regex-based, non-executing) library list
--- already shows for that file.
+-- table (so later sections don't corrupt earlier ones' already-set fields).
+-- __CAPTURE.Component keeps the FIRST table seen (for the majority of files,
+-- which define one component and never call RegisterComponent);
+-- __CAPTURE.Components is the ordered list of everything RegisterComponent
+-- was handed, so the host can surface every variant.
 __CAPTURE = __CAPTURE or {}
+__CAPTURE.Components = __CAPTURE.Components or {}
 
 function Photon2.LibraryComponent()
 	local t = {}
@@ -248,6 +248,7 @@ end
 
 function Photon2.RegisterComponent(t)
 	if not __CAPTURE.Component then __CAPTURE.Component = t end
+	__CAPTURE.Components[#__CAPTURE.Components + 1] = t
 end
 function Photon2.RegisterVehicle(t) __CAPTURE.Vehicle = t end
 function Photon2.RegisterSiren(t) __CAPTURE.Siren = t end

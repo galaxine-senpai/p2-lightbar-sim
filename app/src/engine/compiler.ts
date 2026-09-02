@@ -38,12 +38,53 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** A JS array, or a plain object whose keys are all positive integers -- the
+ * two shapes luaToJs produces for a Lua integer-keyed table (dense 1..n ->
+ * Array, sparse -> object). */
+function isIntKeyedTable(v: unknown): v is unknown[] | Record<string, unknown> {
+	if (Array.isArray(v)) return true;
+	if (!isPlainObject(v)) return false;
+	const keys = Object.keys(v);
+	return keys.length > 0 && keys.every((k) => /^[1-9]\d*$/.test(k));
+}
+
+/** Merge two Lua-style integer-keyed collections the way table.Merge would
+ * (by key, source wins), returning a dense array when the keys come out
+ * contiguous from 1 and a sparse `{n: entry}` object otherwise -- matching
+ * how luaToJs shapes such tables. Used for COMPONENT.Base chains where a
+ * child variant adds elements at new indices (e.g. Whelen Dominator x4/x6/x8
+ * each declare `Elements = { [n] = ... }`). */
+function mergeIntKeyed(dest: unknown, source: unknown): unknown[] | Record<string, unknown> {
+	const merged: Record<string, unknown> = {};
+	const absorb = (t: unknown) => {
+		if (Array.isArray(t)) {
+			t.forEach((v, i) => {
+				if (v !== undefined) merged[String(i + 1)] = v;
+			});
+		} else if (isPlainObject(t)) {
+			for (const [k, v] of Object.entries(t)) if (v !== undefined) merged[k] = v;
+		}
+	};
+	absorb(dest);
+	absorb(source);
+	const nums = Object.keys(merged)
+		.map(Number)
+		.sort((a, b) => a - b);
+	if (nums.length > 0 && nums.every((n, i) => n === i + 1)) return nums.map((n) => merged[String(n)]);
+	return merged;
+}
 
 /** table.Merge semantics: recursive for nested plain objects, everything else overwritten. */
 function deepMerge(dest: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
 	for (const [k, v] of Object.entries(source)) {
 		if (isPlainObject(v) && isPlainObject(dest[k])) {
 			deepMerge(dest[k] as Record<string, unknown>, v);
+		} else if (isIntKeyedTable(v) && isIntKeyedTable(dest[k]) && !(Array.isArray(v) && Array.isArray(dest[k]))) {
+			// One side is a dense array and the other a sparse `{n: ...}` map
+			// (or both sparse) -- Lua sees both as the same table and merges
+			// by key. Two plain arrays keep the existing "child replaces
+			// parent wholesale" behaviour (used for States/Frames lists).
+			dest[k] = mergeIntKeyed(dest[k], v);
 		} else {
 			dest[k] = v;
 		}

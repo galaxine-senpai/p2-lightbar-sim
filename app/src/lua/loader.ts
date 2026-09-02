@@ -215,20 +215,40 @@ export interface LuaLoadResult {
 	error?: string;
 }
 
-/** Executes a Photon2 component/vehicle Lua file's source text and returns
- * the resulting COMPONENT table as a plain JS object. Each call uses a
- * fresh VM so files can't interfere with each other's globals/locals. */
-export function loadComponentLua(src: string): LuaLoadResult {
+export interface LuaLoadManyResult {
+	/** Every component the file registered, in definition order. For a file
+	 * that defines one component and never calls Photon2.RegisterComponent
+	 * this is just `[primary]`. */
+	components: RawComponent[];
+	error?: string;
+}
+
+/** Executes a Photon2 component Lua file and returns every COMPONENT table it
+ * produced. Multi-component files call Photon2.RegisterComponent once per
+ * variant (a later variant usually COMPONENT.Base-es an earlier one in the
+ * same file). Each call uses a fresh VM so files can't interfere. */
+export function loadComponentsLua(src: string): LuaLoadManyResult {
 	const L = newBaseState();
 	try {
 		execChunk(L, "component", translateGLua(src));
 	} catch (e) {
-		return { component: {}, error: (e as Error).message };
+		return { components: [], error: (e as Error).message };
 	}
 	lua.lua_getglobal(L, "__CAPTURE");
+	lua.lua_getfield(L, -1, "Components");
+	const registered = (luaToJs(L, -1) as RawComponent[] | undefined) ?? [];
+	lua.lua_pop(L, 1);
+	if (registered.length > 0) return { components: registered };
 	lua.lua_getfield(L, -1, "Component");
-	const result = luaToJs(L, -1) as RawComponent;
-	return { component: result ?? {} };
+	const primary = luaToJs(L, -1) as RawComponent | undefined;
+	return { components: primary ? [primary] : [] };
+}
+
+/** Single-component convenience wrapper -- returns the file's primary
+ * (first) COMPONENT table. Used for the code-editor patch flow. */
+export function loadComponentLua(src: string): LuaLoadResult {
+	const { components, error } = loadComponentsLua(src);
+	return { component: components[0] ?? {}, error };
 }
 
 /** Runs a P2-developer-authored snippet that assigns onto `COMPONENT`
