@@ -122,21 +122,29 @@ function renderLibraryList() {
 		const titleRow = document.createElement("div");
 		titleRow.className = "lib-title-row";
 		if (hasVariants) {
-			const chevron = document.createElement("span");
-			chevron.className = "lib-chevron";
-			chevron.textContent = expanded ? "▾" : "▸";
-			chevron.title = `${entry.variants.length + 1} variants`;
-			chevron.onclick = (ev) => {
+			const disclosure = document.createElement("span");
+			disclosure.className = "lib-disclosure" + (expanded ? " expanded" : "");
+			disclosure.textContent = "▶"; // ▶, rotated 90deg via CSS when expanded
+			disclosure.title = `${entry.variants.length + 1} components — click to ${expanded ? "collapse" : "expand"}`;
+			disclosure.onclick = (ev) => {
 				ev.stopPropagation();
 				if (expandedFiles.has(entry.id)) expandedFiles.delete(entry.id);
 				else expandedFiles.add(entry.id);
 				renderLibraryList();
 			};
-			titleRow.appendChild(chevron);
+			titleRow.appendChild(disclosure);
 		}
 		const titleDiv = document.createElement("div");
-		titleDiv.textContent = hasVariants ? `${entry.title}  (${entry.variants.length + 1})` : entry.title;
+		titleDiv.className = "lib-title-text";
+		titleDiv.textContent = entry.title;
 		titleRow.appendChild(titleDiv);
+		if (hasVariants) {
+			const count = document.createElement("span");
+			count.className = "lib-count";
+			count.textContent = String(entry.variants.length + 1);
+			count.title = `${entry.variants.length + 1} variants in this file`;
+			titleRow.appendChild(count);
+		}
 		const catDiv = document.createElement("div");
 		catDiv.className = "cat";
 		catDiv.textContent = entry.base ? `${entry.category} · inherits ${entry.base}` : entry.category;

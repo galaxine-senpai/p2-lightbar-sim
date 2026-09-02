@@ -136,21 +136,70 @@ body {
 .lib-title-row {
 	display: flex;
 	align-items: center;
-	gap: 5px;
+	gap: 7px;
 }
 
-.lib-chevron {
+.lib-title-text {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Disclosure control for multi-component rows: a bordered box so it reads as
+   a button, not decoration. Monochrome and quiet enough that the component
+   title still leads. */
+.lib-disclosure {
 	flex: none;
-	width: 10px;
+	width: 18px;
+	height: 18px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	font-size: 10px;
 	line-height: 1;
-	color: var(--text-dim);
+	color: var(--text);
+	background: #30333a;
+	border: 1px solid #45484f;
+	border-radius: 4px;
 	cursor: pointer;
 	user-select: none;
+	transition: transform 0.12s ease, background 0.12s, border-color 0.12s;
 }
 
-.lib-chevron:hover {
+.library-item:hover .lib-disclosure {
+	border-color: #55585f;
+	background: #383b43;
+}
+
+.lib-disclosure:hover {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #0d0e10;
+}
+
+.lib-disclosure.expanded {
+	transform: rotate(90deg);
+}
+
+/* Variant count -- sits next to the title so the row announces "expands into
+   N". */
+.lib-count {
+	flex: none;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 14px;
+	color: var(--text-dim);
+	background: var(--panel-2);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 6px;
+}
+
+.library-item:hover .lib-count {
 	color: var(--text);
+	border-color: #45484f;
 }
 
 .library-item.variant {
