@@ -166,6 +166,15 @@ functions over data and do not touch the DOM.
 - Degree-based phasing and the `Options`/`DefineOptions` feature are preserved
   in exported data but have no editor UI.
 
+## Known issues and upstream divergences
+
+Where this tool deliberately behaves differently from Photon 2, and where it has
+found a probable bug in Photon 2 itself, it is written down in
+[`docs/upstream-divergences.md`](docs/upstream-divergences.md). The first entry
+there is an unreachable `Vehicle.AutomaticLighting` mode in the upstream addon;
+[`docs/upstream-automatic-lighting-parking.md`](docs/upstream-automatic-lighting-parking.md)
+has the full trace.
+
 ## Licensing
 
 The bundled component Lua sources under `app/src/data/components/` are copied
