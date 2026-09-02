@@ -1,6 +1,6 @@
 import "./polyfills";
 import "./style.css";
-import { library, compileLibraryComponent, classifyLibrary, getCategories, UNSUPPORTED_CATEGORY } from "./data";
+import { library, compileLibraryComponent, classifyLibrary, getCategoryTags, getSupportedCount, UNSUPPORTED_CATEGORY } from "./data";
 import { compileComponent } from "./engine/compiler";
 import { getDefaultLightStatesByGroup } from "./lua/loader";
 import { ComponentPlayer } from "./engine/player";
@@ -81,11 +81,15 @@ renderer = new LightbarRenderer(canvas);
 function renderCategoryFilters() {
 	const el = document.getElementById("category-filters")!;
 	el.innerHTML = "";
-	const mkBtn = (label: string, cat: string | null) => {
+	const mkBtn = (label: string, count: number, cat: string | null) => {
 		const b = document.createElement("button");
-		b.textContent = label;
 		b.style.fontSize = "10.5px";
 		b.style.padding = "3px 8px";
+		b.append(label);
+		const n = document.createElement("span");
+		n.className = "tag-count";
+		n.textContent = String(count);
+		b.append(n);
 		if (activeCategory === cat) b.classList.add("active");
 		b.onclick = () => {
 			activeCategory = activeCategory === cat ? null : cat;
@@ -94,8 +98,8 @@ function renderCategoryFilters() {
 		};
 		el.appendChild(b);
 	};
-	mkBtn("All", null);
-	for (const c of getCategories()) mkBtn(c, c);
+	mkBtn("All", getSupportedCount(), null);
+	for (const t of getCategoryTags()) mkBtn(t.name, t.count, t.name);
 }
 
 function renderLibraryList() {

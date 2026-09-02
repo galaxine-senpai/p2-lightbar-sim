@@ -193,11 +193,36 @@ export function classifyLibrary(): void {
 	}
 }
 
-/** Category tags for the filter UI: the real categories that have at least
- * one supported component, plus the Unsupported pseudo-category when any
- * component has no 2D view. Assumes classifyLibrary() has run. */
+export interface CategoryTag {
+	name: string;
+	/** How many components this tag reveals when selected. */
+	count: number;
+}
+
+/** Filter tags with the count each reveals. Real categories count only
+ * supported components -- unsupported ones never appear under them -- so the
+ * numbers add up to the "All" count. The Unsupported tag counts the hidden
+ * ones. Categories with no supported component are dropped. Assumes
+ * classifyLibrary() has run. */
+export function getCategoryTags(): CategoryTag[] {
+	const counts = new Map<string, number>();
+	let unsupported = 0;
+	for (const e of library) {
+		if (e.unsupported) unsupported++;
+		else counts.set(e.category, (counts.get(e.category) ?? 0) + 1);
+	}
+	const tags = [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+	if (unsupported > 0) tags.push({ name: UNSUPPORTED_CATEGORY, count: unsupported });
+	return tags;
+}
+
+/** Count for the "All" tag: everything the default view shows (supported
+ * components only). */
+export function getSupportedCount(): number {
+	return library.reduce((n, e) => n + (e.unsupported ? 0 : 1), 0);
+}
+
+/** Category names only (kept for callers that don't need counts). */
 export function getCategories(): string[] {
-	const real = [...new Set(library.filter((e) => !e.unsupported).map((e) => e.category))].sort();
-	if (library.some((e) => e.unsupported)) real.push(UNSUPPORTED_CATEGORY);
-	return real;
+	return getCategoryTags().map((t) => t.name);
 }
