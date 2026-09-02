@@ -124,7 +124,8 @@ function renderLibraryList() {
 		if (hasVariants) {
 			const disclosure = document.createElement("span");
 			disclosure.className = "lib-disclosure" + (expanded ? " expanded" : "");
-			disclosure.textContent = "▶"; // ▶, rotated 90deg via CSS when expanded
+			// The arrow is a CSS border triangle (::before) -- no glyph, so it
+			// centres cleanly and rotates without font side-bearing drift.
 			disclosure.title = `${entry.variants.length + 1} components — click to ${expanded ? "collapse" : "expand"}`;
 			disclosure.onclick = (ev) => {
 				ev.stopPropagation();
