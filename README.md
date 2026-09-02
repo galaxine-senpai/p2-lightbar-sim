@@ -94,8 +94,8 @@ Photon 2 Lua.
   heads are not selectable.
 - Vehicle-level assembly (multi-component profiles, siren tone sets, equipment
   variants) is out of scope; the tool works on one component at a time.
-- Degree-based phasing and the `Options`/`DefineOptions` feature are preserved on
-  export but have no editor UI.
+- Degree phasing on sequence references (`"SEQ:deg"`) is simulated but has no
+  editor UI. The `Options`/`DefineOptions` feature is preserved on export only.
 
 ## Licensing
 

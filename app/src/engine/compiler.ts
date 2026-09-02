@@ -228,6 +228,25 @@ function buildStatePool(
 	return pool;
 }
 
+/** Port of Photon2.Util.ParseSequenceName (sh_util.lua:304): a sequence
+ * reference in Inputs/Patterns may carry `:`-suffixed parts. Numeric parts
+ * sum into a phase offset in degrees (taken mod 360); a non-numeric part is
+ * a "named phase" and stays appended to the sequence name so it resolves to
+ * a distinctly-named sequence. */
+function parseSequenceRef(ref: string): { sequence: string; phaseDegrees: number } {
+	const parts = ref.split(":");
+	let sequence = parts[0];
+	let degrees = 0;
+	let named: string | undefined;
+	for (let i = 1; i < parts.length; i++) {
+		const n = Number(parts[i]);
+		if (parts[i] !== "" && Number.isFinite(n)) degrees += n;
+		else if (parts[i] !== "") named = parts[i];
+	}
+	if (named !== undefined) sequence = `${sequence}:${named}`;
+	return { sequence, phaseDegrees: ((degrees % 360) + 360) % 360 };
+}
+
 function normalizeFramesTable(raw: unknown): Array<[number, unknown]> {
 	if (Array.isArray(raw)) return raw.map((v, i) => [i + 1, v] as [number, unknown]);
 	if (isPlainObject(raw)) return Object.entries(raw).map(([k, v]) => [Number(k), v] as [number, unknown]);
@@ -451,8 +470,9 @@ export function compileComponent(rawInput: RawComponent, opts: CompileOptions = 
 			warnings.push(`Unknown pattern "${patternName}"`);
 			return out;
 		}
-		for (const [segment, sequence] of entries) {
-			out[segment] = { sequence, order: orderOverride };
+		for (const [segment, sequenceRef] of entries) {
+			const { sequence, phaseDegrees } = parseSequenceRef(sequenceRef);
+			out[segment] = { sequence, order: orderOverride, phaseDegrees: phaseDegrees || undefined };
 		}
 		return out;
 	}
@@ -482,7 +502,10 @@ export function compileComponent(rawInput: RawComponent, opts: CompileOptions = 
 						if (typeof value === "string") Object.assign(assignments, expandPattern(value, order));
 					} else {
 						const { value, order } = unwrapPositional(val);
-						if (typeof value === "string") assignments[key] = { sequence: value, order };
+						if (typeof value === "string") {
+							const { sequence, phaseDegrees } = parseSequenceRef(value);
+							assignments[key] = { sequence, order, phaseDegrees: phaseDegrees || undefined };
+						}
 					}
 				}
 			}

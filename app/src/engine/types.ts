@@ -183,6 +183,11 @@ export interface CompiledSegment {
 export interface InputAssignment {
 	sequence: string;
 	order?: number;
+	/** Degree phase offset from a `SEQ:deg` reference (Photon2's
+	 * ParseSequenceName / PhaseOffset). Shifts the sequence's frame cursor by
+	 * `round(stepCount * deg/360)` so copies of one pattern on different
+	 * segments run out of step. */
+	phaseDegrees?: number;
 }
 
 export interface VirtualOutputMode {

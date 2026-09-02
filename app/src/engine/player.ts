@@ -79,6 +79,7 @@ interface Activation {
 	channel: string | null;
 	sequenceName: string | null;
 	order?: number;
+	phaseDegrees?: number;
 	since: number; // ms, simulation clock
 }
 
@@ -223,6 +224,7 @@ export class ComponentPlayer {
 			let channel: string | null = null;
 			let sequenceName: string | null = null;
 			let order: number | undefined;
+			let phaseDegrees: number | undefined;
 			if (winner) {
 				const mode = this.currentModes[winner]!;
 				const assignment = component.inputs[winner][mode][seg.name];
@@ -230,10 +232,11 @@ export class ComponentPlayer {
 				channel = winner;
 				sequenceName = assignment.sequence;
 				order = assignment.order;
+				phaseDegrees = assignment.phaseDegrees;
 			}
 			const prev = this.activation[seg.name];
 			if (!prev || prev.key !== key) {
-				this.activation[seg.name] = { key, channel, sequenceName, order, since: this.simTimeMs };
+				this.activation[seg.name] = { key, channel, sequenceName, order, phaseDegrees, since: this.simTimeMs };
 			}
 		}
 	}
@@ -274,7 +277,14 @@ export class ComponentPlayer {
 				const frameDuration = rawDuration > 0 && Number.isFinite(rawDuration) ? rawDuration : FALLBACK_FRAME_DURATION;
 				rawIndex = Math.floor(elapsedSec / frameDuration);
 			}
-			const cursor = sequence.isRepeating ? ((rawIndex % stepCount) + stepCount) % stepCount : Math.min(rawIndex, stepCount - 1);
+			// Degree phasing (Photon2 PhaseOffset): shift the frame cursor by
+			// round(stepCount * deg/360) so identical patterns on sibling
+			// segments run out of step. Only meaningful for a repeating
+			// sequence; a non-repeating one clamps to its last frame either way.
+			const phaseOffset = act.phaseDegrees ? Math.round(stepCount * (act.phaseDegrees / 360)) : 0;
+			const cursor = sequence.isRepeating
+				? (((rawIndex + phaseOffset) % stepCount) + stepCount) % stepCount
+				: Math.min(rawIndex, stepCount - 1);
 			const frameNum = sequence.steps[cursor] ?? 0;
 			const frame = seg.frames[frameNum] ?? seg.frames[0];
 			return { priority, order: act.order ?? 0, assignments: frame?.assignments ?? {} };
