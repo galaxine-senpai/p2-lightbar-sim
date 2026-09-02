@@ -85,7 +85,8 @@ Photon 2 Lua.
   data; the visual style does not.
 - Bone-parented mesh and lens pieces are not drawn — their position depends on a
   3D bone transform this tool does not track. A rotating beacon's fixed elements
-  still render, with a cue for rotation direction.
+  still render, and a proxy-coloured element driven by a rotor draws a projected
+  cone of light that sweeps with the rotor's angle.
 - `Sound`, `Pose`, `Sequence`, `Sub`, and `Virtual` element types load and
   export but are not simulated.
 - A single `.lua` file can define several components (Whelen Tracer defines six;

@@ -110,7 +110,7 @@ export class LightbarRenderer {
 			const state = states[p.index];
 			if (!state || state.intensity <= 0.001) continue;
 			if (state.rotationAngle !== undefined) {
-				drawRotatingCrescentLight(ctx, p.sx, p.sy, p.radius, state, state.rotationAngle);
+				drawRotatingBeamLight(ctx, p.sx, p.sy, p.radius, state, state.rotationAngle);
 			} else {
 				drawGlowLight(ctx, p.sx, p.sy, p.radius, state);
 			}
@@ -156,39 +156,67 @@ function drawGlowLight(ctx: CanvasRenderingContext2D, x: number, y: number, radi
 	ctx.fill();
 }
 
-/** A rotating-beacon indicator (a Bone-proxy-driven element -- see
- * ResolvedState.rotationAngle): draws the normal glow, then paints a solid
- * BLACK crescent moon directly onto the lens -- a simplified 2D stand-in
- * for the dark, non-reflecting side of a physical rotating drum/mirror,
- * rather than a subtractive "erase to reveal the background" trick (which
- * only reads as dark by coincidence of the housing color). The crescent's
- * open side rotates to face the bone's current angle, so the light visibly
- * "faces" a direction and spins over time instead of just changing color. */
-function drawRotatingCrescentLight(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, state: ResolvedState, angleDegrees: number) {
-	drawGlowLight(ctx, x, y, radius, state);
-
+/** A rotating beacon (a Bone-proxy-driven element -- see
+ * ResolvedState.rotationAngle): a bright emitter core with a projected
+ * cone/beam of light sweeping out from it in the bone's current direction,
+ * plus a faint omnidirectional pool so the beacon still reads as "on" from
+ * any side. The beam is a few stacked wedges -- wide and faint through
+ * narrow and bright -- to fake angular falloff, each filled with a radial
+ * gradient for distance falloff. Drawn under "lighter" compositing so
+ * overlapping beams and glows add. */
+function drawRotatingBeamLight(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, state: ResolvedState, angleDegrees: number) {
+	const { r, g, b } = state.color;
+	const alpha = Math.max(0, Math.min(1, state.intensity));
 	const rad = (angleDegrees * Math.PI) / 180;
-	// Covers just the emitter itself (the solid core circles drawGlowLight
-	// paints at ~0.55r) -- NOT the soft ambient bloom (out to ~2.2r), which
-	// stays a full, uninterrupted glow around the shadowed lens.
-	const bodyRadius = radius * 0.6;
-	const cutOffset = bodyRadius * 0.85;
-	const cutRadius = bodyRadius * 1.15;
-	const cutX = x + Math.cos(rad) * cutOffset;
-	const cutY = y + Math.sin(rad) * cutOffset;
 
-	const prevOp = ctx.globalCompositeOperation;
-	ctx.globalCompositeOperation = "source-over";
+	// Faint omnidirectional pool so the beacon still reads as "on" from any
+	// side (lens scatter / bounce), kept small so the beam dominates.
+	const poolR = radius * 1.4;
+	const pool = ctx.createRadialGradient(x, y, 0, x, y, poolR);
+	pool.addColorStop(0, `rgba(${r},${g},${b},${0.35 * alpha})`);
+	pool.addColorStop(0.55, `rgba(${r},${g},${b},${0.12 * alpha})`);
+	pool.addColorStop(1, `rgba(${r},${g},${b},0)`);
+	ctx.fillStyle = pool;
 	ctx.beginPath();
-	// Two circles wound in OPPOSITE directions in one path: with the
-	// nonzero fill rule, their overlap cancels out (winding 0, left
-	// unpainted) while the rest of the body circle fills solid -- the
-	// standard canvas trick for a crescent/annulus cutout as one fill.
-	ctx.arc(x, y, bodyRadius, 0, Math.PI * 2, false);
-	ctx.arc(cutX, cutY, cutRadius, 0, Math.PI * 2, true);
-	ctx.fillStyle = "#000000";
+	ctx.arc(x, y, poolR, 0, Math.PI * 2);
 	ctx.fill();
-	ctx.globalCompositeOperation = prevOp;
+
+	// Projected beam: many thin wedges from wide/faint to narrow/bright, so
+	// the angular edge feathers instead of stepping. Each wedge also carries
+	// a radial gradient for distance falloff -- a long dim tail over a bright
+	// near field reads as a real projected cone.
+	const beamLen = radius * 12;
+	const N = 6;
+	const maxHalf = 0.42;
+	for (let i = 0; i < N; i++) {
+		const t = i / (N - 1); // 0 = outermost/faintest, 1 = centre/brightest
+		const half = maxHalf * (1 - t) + 0.04;
+		const a = 0.06 + 0.32 * Math.pow(t, 1.7);
+		const grad = ctx.createRadialGradient(x, y, radius * 0.55, x, y, beamLen);
+		grad.addColorStop(0, `rgba(${r},${g},${b},${a * alpha})`);
+		grad.addColorStop(0.3, `rgba(${r},${g},${b},${a * 0.5 * alpha})`);
+		grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+		ctx.fillStyle = grad;
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.arc(x, y, beamLen, rad - half, rad + half);
+		ctx.closePath();
+		ctx.fill();
+	}
+
+	// Compact emitter core with a soft halo so it doesn't read as a hard disc.
+	const haloR = radius * 0.9;
+	const halo = ctx.createRadialGradient(x, y, radius * 0.2, x, y, haloR);
+	halo.addColorStop(0, `rgba(${r},${g},${b},${0.9 * alpha})`);
+	halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+	ctx.fillStyle = halo;
+	ctx.beginPath();
+	ctx.arc(x, y, haloR, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.beginPath();
+	ctx.fillStyle = `rgba(255,255,255,${0.95 * alpha})`;
+	ctx.arc(x, y, Math.max(1.5, radius * 0.18), 0, Math.PI * 2);
+	ctx.fill();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
