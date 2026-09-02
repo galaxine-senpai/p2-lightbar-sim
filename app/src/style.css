@@ -257,6 +257,20 @@ body {
 	display: block;
 }
 
+#viewer-message {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 15%;
+	text-align: center;
+	background: var(--bg);
+	color: var(--text-dim);
+	font-size: 13px;
+	line-height: 1.55;
+}
+
 .viewer-toolbar {
 	display: flex;
 	align-items: center;
@@ -295,6 +309,18 @@ button.active {
 
 button.subtle {
 	background: transparent;
+}
+
+/* Count appended to each category filter chip. */
+#category-filters .tag-count {
+	margin-left: 4px;
+	font-size: 9.5px;
+	font-weight: 600;
+	color: var(--text-dim);
+}
+
+#category-filters button.active .tag-count {
+	color: #05122099;
 }
 
 .tabs {

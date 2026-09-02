@@ -1,6 +1,6 @@
 import "./polyfills";
 import "./style.css";
-import { library, compileLibraryComponent, getCategories } from "./data";
+import { library, compileLibraryComponent, classifyLibrary, getCategories, UNSUPPORTED_CATEGORY } from "./data";
 import { compileComponent } from "./engine/compiler";
 import { getDefaultLightStatesByGroup } from "./lua/loader";
 import { ComponentPlayer } from "./engine/player";
@@ -34,7 +34,7 @@ app.innerHTML = `
         <h2 id="viewer-title">Select a lightbar</h2>
         <div class="meta" id="viewer-meta"></div>
       </div>
-      <div class="viewer-canvas-wrap"><canvas id="canvas"></canvas></div>
+      <div class="viewer-canvas-wrap"><canvas id="canvas"></canvas><div id="viewer-message" hidden></div></div>
       <div class="viewer-toolbar">
         <button id="play-pause">Pause</button>
         <button id="reset-dash">Reset dashboard</button>
@@ -80,7 +80,6 @@ renderer = new LightbarRenderer(canvas);
 // ===== Library list =====
 function renderCategoryFilters() {
 	const el = document.getElementById("category-filters")!;
-	const cats = getCategories();
 	el.innerHTML = "";
 	const mkBtn = (label: string, cat: string | null) => {
 		const b = document.createElement("button");
@@ -96,7 +95,7 @@ function renderCategoryFilters() {
 		el.appendChild(b);
 	};
 	mkBtn("All", null);
-	for (const c of cats) mkBtn(c, c);
+	for (const c of getCategories()) mkBtn(c, c);
 }
 
 function renderLibraryList() {
@@ -104,9 +103,17 @@ function renderLibraryList() {
 	el.innerHTML = "";
 	const q = searchQuery.trim().toLowerCase();
 	const hit = (s: string) => s.toLowerCase().includes(q);
+	const searching = q.length > 0;
 	const items = library.filter((e) => {
-		if (activeCategory && e.category !== activeCategory) return false;
-		if (!q) return true;
+		if (activeCategory === UNSUPPORTED_CATEGORY) {
+			if (!e.unsupported) return false;
+		} else {
+			// "All" or a real category: components with no 2D view stay hidden
+			// unless the user is actively searching for one.
+			if (e.unsupported && !searching) return false;
+			if (activeCategory && e.category !== activeCategory) return false;
+		}
+		if (!searching) return true;
 		return hit(e.title) || hit(e.id) || e.variants.some((v) => hit(v.title) || hit(v.id));
 	});
 	// entry/variant title/category/base are parsed straight out of component
@@ -205,6 +212,25 @@ export function setComponent(compiled: CompiledComponent) {
 		warnEl.style.display = "none";
 	}
 
+	// Components that compile to no drawable element -- either because every
+	// element is a non-drawn type (Sound/Sub/Sequence/Virtual/...) or because
+	// every light element is parented to a bone this viewer doesn't
+	// position -- get an explanation instead of a blank canvas.
+	const msgEl = document.getElementById("viewer-message")!;
+	const els = compiled.elements;
+	if (els.length > 0 && !els.some((e) => e.isVisual)) {
+		const drawGroups = new Set(["2D", "Mesh", "Projected"]);
+		const hasDrawableType = els.some((e) => drawGroups.has(e.templateGroup));
+		const otherTypes = [...new Set(els.map((e) => e.templateGroup).filter((g) => g && g !== "Bone" && !drawGroups.has(g)))];
+		msgEl.textContent =
+			hasDrawableType && otherTypes.length === 0
+				? `No 2D representation. Every light on this component is parented to a bone (an aimed, articulated, or rotating mount), and this viewer doesn't track bone positions. The Dashboard, Segments, Code, and Export tabs still work.`
+				: `No 2D representation. This component's elements (${[...new Set(els.map((e) => e.templateGroup).filter(Boolean))].join(", ")}) are types the schematic viewer doesn't draw. The Dashboard, Segments, Code, and Export tabs still work.`;
+		msgEl.hidden = false;
+	} else {
+		msgEl.hidden = true;
+	}
+
 	renderLibraryList();
 	renderTab();
 }
@@ -227,6 +253,14 @@ document.getElementById("new-custom-btn")!.addEventListener("click", () => {
 	setTab("pattern");
 });
 
+// Compile every component once up front so tag counts and the Unsupported
+// filter are accurate from the first paint (this also warms the compile
+// cache, making the first component click instant).
+{
+	const t0 = performance.now();
+	classifyLibrary();
+	console.info(`classified ${library.length} components in ${(performance.now() - t0).toFixed(0)}ms`);
+}
 renderCategoryFilters();
 renderLibraryList();
 

@@ -30,7 +30,17 @@ export interface LibraryEntry {
 	/** Sibling components defined in the same file, primary excluded. Empty
 	 * for a single-component file. */
 	variants: LibraryVariant[];
+	/** True when the primary component compiles to zero drawable
+	 * (2D/Mesh/Projected) elements -- the viewer has nothing to show. Filled
+	 * by classifyLibrary(); undefined until then. */
+	unsupported?: boolean;
+	/** Distinct element template groups the primary component uses (e.g.
+	 * ["Bone", "Sound"]). Filled by classifyLibrary(). */
+	elementTypes?: string[];
 }
+
+/** Pseudo-category for the filter UI. */
+export const UNSUPPORTED_CATEGORY = "Unsupported";
 
 const titleRe = /COMPONENT\.Title\s*=\s*(?:\[\[([\s\S]*?)\]\]|"([^"]*)"|'([^']*)')/;
 const nameRe = /COMPONENT\.Name\s*=\s*(?:\[\[([\s\S]*?)\]\]|"([^"]*)"|'([^']*)')/;
@@ -160,6 +170,34 @@ export function compileLibraryComponent(id: string): CompiledComponent {
 	return compiled;
 }
 
+let classified = false;
+
+/** One-time pass: compile every primary component and record whether it has
+ * any drawable element and which element groups it uses. Compiling also
+ * warms compiledCache, so the first click on any component is instant
+ * afterward. Safe to call repeatedly. */
+export function classifyLibrary(): void {
+	if (classified) return;
+	classified = true;
+	for (const entry of library) {
+		try {
+			const compiled = compileLibraryComponent(entry.id);
+			const groups = [...new Set(compiled.elements.map((e) => e.templateGroup))].sort();
+			entry.elementTypes = groups;
+			entry.unsupported = !compiled.elements.some((e) => e.isVisual);
+		} catch {
+			// A component that won't compile still gets a row; leave it visible.
+			entry.elementTypes = [];
+			entry.unsupported = false;
+		}
+	}
+}
+
+/** Category tags for the filter UI: the real categories that have at least
+ * one supported component, plus the Unsupported pseudo-category when any
+ * component has no 2D view. Assumes classifyLibrary() has run. */
 export function getCategories(): string[] {
-	return [...new Set(library.map((e) => e.category))].sort();
+	const real = [...new Set(library.filter((e) => !e.unsupported).map((e) => e.category))].sort();
+	if (library.some((e) => e.unsupported)) real.push(UNSUPPORTED_CATEGORY);
+	return real;
 }
