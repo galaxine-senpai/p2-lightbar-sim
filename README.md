@@ -1,5 +1,8 @@
 # P2 Lightbar Sim
 
+> [!WARNING]
+> This was <ins>***100% vibecoded***</ins> with ***moderate human overview***, this was and is a test of claude code to see the quality of work it can output. If any of this breaks just sumbit an issue and I will look into it.
+
 A tool for inspecting, simulating, and editing Photon 2 lightbar components, and
 exporting them back to Photon 2 `.lua` files.
 
