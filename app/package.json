@@ -15,7 +15,7 @@
     "gen-manifest": "node scripts/gen-bundled-manifest.mjs"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5",
+    "concurrently": "^10.0.6",
     "electron": "^44.1.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
